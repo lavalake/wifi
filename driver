@@ -1,0 +1,162 @@
+dhd_module_init
+	dhd_wifi_platform_load_pcie
+		dhd_bus_register
+			dhdpcie_pci_probe
+				dhdpcie_init
+					dhdpcie_scan_resource
+						dhdpcie_get_resource
+							pci_enable_device
+							pci_resource_start
+							pci_resource_len
+							ioremap_nocache
+					dhdpcie_bus_attach
+						dhdpcie_dongle_attach
+						dhd_attach
+							RING_ATTACH
+							dhd_watchdog_thread
+							dhd_deferred_work_init
+					dhdpcie_bus_intr_disable
+					dhdpcie_request_irq
+					dhd_register_if
+DHD bus init
+	dhd_ioctl_entry
+		dhd_ioctl_process	
+dhd_bus_start
+				dhd_bus_init
+					dhdpcie_readshared
+					dhdpcie_bus_intr_enable
+				dhd_flow_rings_init
+				dhd_prot_init
+					dhd_prot_ring_init
+					dhd_prot_d2h_sync_init
+					dhd_prot_h2d_sync_init
+					dhd_prot_flowrings_pool_attach
+					dhd_msgbuf_rxbuf_post
+					dhd_msgbuf_rxbuf_post_ioctlresp_bufs
+					dhd_msgbuf_rxbuf_post_event_bufs
+	
+
+Rx path
+dhdpcie_bus_isr
+dhd_sched_dpc
+
+	binary_sema_up(&dhd->thr_dpc_ctl)
+dhd_dpc_thread
+	binary_sema_down
+while dhd_bus_dpc
+	dhdpcie_bus_process_mailbox_intr
+		dhdpci_bus_read_frames
+			dhd_prot_process_ctrlbuf
+			dhd_update_txflowrings
+			dhd_prot_process_msgbuf_txcpl
+			dhd_prot_process_msgbuf_rxcpl
+			dhd_prot_process_msgbuf_infocpl
+				dhd_prot_process_msgtype
+				table_lookup[msg_type](dhd, buf); dhd_prot_ioctcmplt_process
+					dhd_os_ioctl_resp_wake
+			dhd_bus_check_idle_scan
+Tx Path
+	dhd_ioctl_process
+		dhd_wl_ioctl
+			dhd_prot_ioctl
+				dhd_msgbuf_set_ioctl
+				dhd_msgbuf_query_ioctl
+					dhd_fillup_ioct_reqst
+						dhd_prot_ring_write_complete
+							dhdpcie_bus_ringbell_fast
+					dhd_msgbuf_wait_ioctl_cmplt		
+						dhd_msgbuf_rxbuf_post_ioctlresp_bufs
+						dhd_os_ioctl_resp_wait
+							wait_event_timeout(dhd->ioctl_resp_wait, (*condition), timeout);
+
+
+
+
+/**
+ * msgbuf_ring : This object manages the host side ring that includes a DMA-able
+ * buffer, the WR and RD indices, ring parameters such as max number of items
+ * an length of each items, and other miscellaneous runtime state.
+ * A msgbuf_ring may be used to represent a H2D or D2H common ring or a
+ * H2D TxPost ring as specified in the PCIE FullDongle Spec.
+ * Ring parameters are conveyed to the dongle, which maintains its own peer end
+ * ring state. Depending on whether the DMA Indices feature is supported, the
+ * host will update the WR/RD index in the DMA indices array in host memory or
+ * directly in dongle memory.
+ */
+typedef struct msgbuf_ring {
+	bool           inited;
+	uint16         idx;       /* ring id */
+	uint16         rd;        /* read index */
+	uint16         wr;        /* write index */
+	uint16         max_items; /* maximum number of items in ring */
+	uint16         item_len;  /* length of each item in the ring */
+	sh_addr_t      base_addr; /* LITTLE ENDIAN formatted: base address */
+	dhd_dma_buf_t  dma_buf;   /* DMA-able buffer: pa, va, len, dmah, secdma */
+	uint32         seqnum;    /* next expected item's sequence number */
+#ifdef TXP_FLUSH_NITEMS
+	void           *start_addr;
+	/* # of messages on ring not yet announced to dongle */
+	uint16         pend_items_count;
+#endif /* TXP_FLUSH_NITEMS */
+
+	uint8   ring_type;
+	uint8   n_completion_ids;
+	bool    create_pending;
+	uint16  create_req_id;
+	uint8   current_phase;
+	uint16	compeltion_ring_ids[MAX_COMPLETION_RING_IDS_ASSOCIATED];
+	uchar		name[RING_NAME_MAX_LENGTH];
+} msgbuf_ring_t;
+
+Pciedev_dpc
+	pciedev_msgbuf_intr_process
+		pciedev_handle_h2d_dma
+			pciedev_handle_h2d_msg_ctrlsubmit
+
+Dongle side
+IOCTL
+cdc_proto_ctrldispatch
+cdc_indicate
+dngl_dev_set_oid	
+dngl_dev_query_oid
+_dngl_devioctl
+bus_ops->sendctl
+WL EXE
+wl_ioctl
+	wl_driver_ioctl
+
+dhd_info_t *dhd = DHD_DEV_INFO(net);
+UART bus
+	Dhduart_bus_register
+		Dhduart_bus_attach
+
+
+static hnd_dev_ops_t pciedev_funcs = {
+ 81         probe:          pciedev_probe,
+ 82         open:           pciedev_open,
+ 83         close:          pciedev_close,
+ 84         xmit:           pciedev_send,
+ 85         ioctl:          pciedev_ioctl,
+ 86         txflowcontrol:  pciedev_txflowcontrol,
+ 87         poll:           pciedev_run,
+ 88 };
+ 89
+ 90 struct dngl_bus_ops pciedev_bus_ops = {
+ 91         rebinddev:      pciedev_bus_rebinddev,
+ 92         binddev:        pciedev_bus_binddev,
+ 93         sendctl:        pciedev_bus_sendctl,
+ 94         iovar:          pciedev_bus_iovar,
+ 95         unbinddev:      pciedev_bus_unbinddev,
+ 96         tx:             pciedev_create_d2h_messages_tx,
+ 97         flowring_ctl:   pciedev_bus_flring_ctrl
+ 98 };
+ 99
+100 hnd_dev_t pciedev_dev = {
+101         name:           "pciedev",
+102         ops:            &pciedev_funcs
+103 };
+
+
+IOCTL RX
+	dhdsdio_probe_malloc
+		bus->rxbuf = DHD_OS_PREALLO
