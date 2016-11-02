@@ -1,0 +1,49 @@
+#if defined(BCM_RECLAIM_ATTACH_FN_DATA)
+#define BCMATTACHDATA(_data)    __attribute__ ((__section__ (".dataini2." #_data))) _data
+#define BCMATTACHFN(_fn)        __attribute__ ((__section__ (".textini2." #_fn), noinline)) _fn
+#else   /* BCM_RECLAIM_ATTACH_FN_DATA */
+#define BCMATTACHDATA(_data)    _data
+#define BCMATTACHFN(_fn)        _fn
+#endif  /* BCM_RECLAIM_ATTACH_FN_DATA */
+
+
+ld
+        /* all reclaim sections are individually aligned to 4 KiB, and are also
+         * sized such that there are no holes in between reclaim sections
+         */
+        . = ALIGN(4096);
+        _reclaim_start = .;
+
+        .textrc1 ALIGN (4096) : {
+                _rstart1      = .;
+                _rstart_code1 = .;
+                * (.textini1.*)
+                * (.rodataini1.*)
+                . = ALIGN(4096);
+                _rend_code1   = .;
+        } >IRAM
+
+        .datarc1 ALIGN (4096) : {
+                _rstart_data1 = .;
+                * (.dataini1.*)
+                . = ALIGN(4096);
+                _rend_data1   = .;
+                _rend1        = .;
+        } >IRAM
+
+        .textrc2 ALIGN (4096) : {
+                _rstart2      = .;
+                _rstart_code2 = .;
+                * (.textini2.*)
+                * (.rodataini2.*)
+                . = ALIGN(4096);
+                _rend_code2   = .;
+        } >IRAM
+
+        .datarc2 ALIGN (4096) : {
+                _rstart_data2 = .;
+                * (.dataini2.*)
+                . = ALIGN(4096);
+                _rend_data2   = .;
+                _rend2        = .;
+        } >IRAM
